@@ -13,6 +13,11 @@ package org.jacoco.dev.bytecode;
 
 import java.io.PrintWriter;
 
+import static org.junit.Assert.*;
+
+import org.jacoco.core.instr.Instrumenter;
+import org.jacoco.core.runtime.IExecutionDataAccessorGenerator;
+import org.jacoco.core.runtime.SystemPropertiesRuntime;
 import org.jacoco.dev.bytecode.tools.ClassDumper;
 import org.jacoco.dev.bytecode.tools.FrameRecalculator;
 import org.jacoco.dev.bytecode.tools.TargetLoader;
@@ -29,9 +34,6 @@ public class AALOADnullTest {
 			if (dummy()) {
 				dummy();
 			}
-			// span scope
-			array.toString();
-			element.toString();
 		}
 
 		static boolean dummy() {
@@ -58,16 +60,42 @@ public class AALOADnullTest {
 		byte[] recalculatedClass = FrameRecalculator.recalculate(targetClass);
 		ClassDumper.dump(recalculatedClass, "run", out);
 		verifyClass(recalculatedClass);
+
+		out.println("3. Original Class File Instrumented");
+		byte[] instrumentedClass = jacocoInstrument(targetClass);
+		ClassDumper.dump(targetClass, "run", out);
+		verifyClass(instrumentedClass);
+
+		out.println("4. Frames Recalculated Instrumented");
+		instrumentedClass = jacocoInstrument(recalculatedClass);
+		ClassDumper.dump(targetClass, "run", out);
+		expectVerificationError(instrumentedClass, out);
+	}
+
+	public static void expectVerificationError(byte[] definition, PrintWriter out) throws Exception {
+		try {
+			verifyClass(definition);
+			fail("VerifyError expected");
+		} catch (VerifyError ve) {
+			out.println("Expected VerifyError: " + ve.getMessage());
+		}
 	}
 
 	public static void verifyClass(byte[] definition) throws Exception {
 		TargetLoader loader = new TargetLoader();
 		String name = Target.class.getName();
-		Runnable runnable = (Runnable) loader.add(name, definition).newInstance();
+		Class<?> clazz = loader.add(name, definition);
 		try {
+			Runnable runnable = (Runnable) clazz.newInstance();
 			runnable.run();
 		} catch (NullPointerException e) {
 		}
+	}
+
+	public static byte[] jacocoInstrument(byte[] source) throws Exception {
+		final IExecutionDataAccessorGenerator access = new SystemPropertiesRuntime();
+		final Instrumenter instrumenter = new Instrumenter(access);
+		return instrumenter.instrument(source, "<bytearray>");
 	}
 
 }
